@@ -10,7 +10,9 @@ struct Game {
     away_team: Team,
 
     outs: i32,
-    top: bool
+    top: bool,
+
+    base_runners: BaseRunners
 }
 
 impl Game {
@@ -21,7 +23,8 @@ impl Game {
             away_team: Team::new(away_team_name),
             home_team: Team::new(home_team_name),
             outs: 0,
-            top: true
+            top: true,
+            base_runners: BaseRunners::Empty
         }
     }
 
@@ -38,8 +41,11 @@ impl Game {
     }
 
     fn do_half_inning(&mut self) {
+        self.outs = 0;
+        self.base_runners = BaseRunners::Empty;
         self.print_status();
         while self.outs < 3 {
+            dbg!(self.base_runners);
             self.do_at_bat();
         }
     }
@@ -47,14 +53,22 @@ impl Game {
     fn do_inning(&mut self) {
         
         self.top = true;
-        self.outs = 0;
         self.do_half_inning();
 
         self.top = false;
-        self.outs = 0;
         self.do_half_inning();
         
         self.inning += 1;
+    }
+
+    fn score(&mut self, runs: i32) {
+
+        if self.top {
+            self.away_team.runs += runs;
+        }
+        else {
+            self.home_team.runs += runs;
+        }
     }
 
     fn do_at_bat(&mut self) {
@@ -63,22 +77,127 @@ impl Game {
         result = dbg!(result);
         match result { 
             AtBat::Strikeout => self.outs += 1,
-            AtBat::Walk => (),
+            AtBat::Walk => {
+                self.base_runners = match self.base_runners {
+                    BaseRunners::Empty => BaseRunners::First,
+                    BaseRunners::First => BaseRunners::FirstSecond,
+                    BaseRunners::Second => BaseRunners::FirstSecond,
+                    BaseRunners::Third => BaseRunners::FirstThird,
+                    BaseRunners::FirstSecond => BaseRunners::Loaded,
+                    BaseRunners::FirstThird => BaseRunners::Loaded,
+                    BaseRunners::SecondThird => BaseRunners::Loaded,
+                    BaseRunners::Loaded => {
+                        self.score(1);
+                        BaseRunners::Loaded
+                    }
+                };
+            },
             AtBat::Contact => {
                 // if contact, decide kind of contact
                 let mut contact_result: ContactType = rand::random();
                 contact_result = dbg!(contact_result);
-                match contact_result {
-                    ContactType::GroundOut => self.outs += 1,
-                    ContactType::InfieldFly => self.outs += 1,
-                    ContactType::OutfieldFly => self.outs += 1,
-                    ContactType::Single => (),
-                    ContactType::Double => (),
-                    ContactType::Triple => (),
-                    ContactType::Homerun => ()
-                }
+                self.do_contact(contact_result);
             }
         } 
+    }
+
+    fn do_contact(&mut self, contact_type: ContactType) {
+        // gross :(
+        match contact_type {
+            ContactType::GroundOut => self.outs += 1,
+            ContactType::InfieldFly => self.outs += 1,
+            ContactType::OutfieldFly => {
+                self.outs += 1;
+                if self.outs >= 3 {
+                    return
+                }
+                self.base_runners = match self.base_runners {
+                    BaseRunners::Third => {
+                        self.score(1);
+                        BaseRunners::Empty
+                    },
+                    BaseRunners::FirstThird => {
+                        self.score(1);
+                        BaseRunners::First
+                    }
+                    BaseRunners::SecondThird => {
+                        self.score(1);
+                        BaseRunners::Third
+                    }
+                    BaseRunners::Loaded => {
+                        self.score(1);
+                        BaseRunners::SecondThird
+                    }
+                    _ => self.base_runners
+                };
+            },
+            ContactType::Single => {
+                self.base_runners = match self.base_runners {
+                    BaseRunners::Empty => BaseRunners::First,
+                    BaseRunners::First => BaseRunners::FirstSecond,
+                    BaseRunners::Second => BaseRunners::FirstSecond,
+                    BaseRunners::Third => BaseRunners::FirstThird,
+                    BaseRunners::FirstSecond => BaseRunners::Loaded,
+                    BaseRunners::SecondThird => BaseRunners::Loaded,
+                    BaseRunners::FirstThird => BaseRunners::Loaded,
+                    BaseRunners::Loaded => {
+                        self.score(1);
+                        BaseRunners::Loaded
+                    },
+                };
+            },
+            ContactType::Double => {
+                // assuming for now runners on 1st do not score
+                self.base_runners = match self.base_runners {
+                    BaseRunners::Empty => BaseRunners::Second,
+                    BaseRunners::First => BaseRunners::SecondThird,
+                    BaseRunners::Second => {
+                        self.score(1);
+                        BaseRunners::Second
+                    },
+                    BaseRunners::Third => {
+                        self.score(1);
+                        BaseRunners::Second
+                    },
+                    BaseRunners::FirstSecond => {
+                        self.score(1);
+                        BaseRunners::SecondThird
+                    },
+                    BaseRunners::SecondThird => {
+                        self.score(2);
+                        BaseRunners::Second
+                    },
+                    BaseRunners::FirstThird => {
+                        self.score(1);
+                        BaseRunners::SecondThird
+                    },
+                    BaseRunners::Loaded => {
+                        self.score(2);
+                        BaseRunners::SecondThird
+                    },
+                }
+            },
+            ContactType::Triple => {
+                self.base_runners = BaseRunners::Third;
+                self.score(match self.base_runners {
+                    BaseRunners::Empty => 0,
+                    BaseRunners::First | BaseRunners::Second | BaseRunners::Third => 1,
+                    BaseRunners::FirstSecond | BaseRunners::SecondThird | BaseRunners::FirstThird => 2,
+                    BaseRunners::Loaded => 3,
+                }
+                )
+            },
+            ContactType::Homerun => {
+                self.base_runners = BaseRunners::Empty;
+                self.score(match self.base_runners {
+                    BaseRunners::Empty => 1,
+                    BaseRunners::First | BaseRunners::Second | BaseRunners::Third => 2,
+                    BaseRunners::FirstSecond | BaseRunners::SecondThird | BaseRunners::FirstThird => 3,
+                    BaseRunners::Loaded => 4,
+                }
+                )
+            },
+        }
     }
 }
 
@@ -93,7 +212,6 @@ impl Team {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 enum AtBat {
     Strikeout,
@@ -136,6 +254,20 @@ impl Distribution<ContactType> for Standard {
     }
 }
 
+#[derive(Debug)]
+#[derive(Clone)]
+#[derive(Copy)]
+enum BaseRunners {
+    Empty,
+    First,
+    Second,
+    Third,
+    FirstSecond,
+    SecondThird,
+    FirstThird,
+    Loaded
+}
+
 fn main() {
 
     let mut game = Game::new("Red Sox", "Brewers");
@@ -143,4 +275,7 @@ fn main() {
     while game.inning <= 9 {
         game.do_inning();
     }
+
+    println!("GAME OVER");
+    game.print_status();
 }
