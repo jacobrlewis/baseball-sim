@@ -28,10 +28,14 @@ impl Game {
         }
     }
 
-    fn print_status(&self) {
-        println!("====================");
+    fn print_score(&self) {
         println!("Away | {} : {}", self.away_team.name, self.away_team.runs);
         println!("Home | {} : {}", self.home_team.name, self.home_team.runs);
+    }
+
+    fn print_inning_start(&self) {
+        println!("\n\n====================");
+        self.print_score();
         println!("Start {} of the {}.", 
         match self.top {
             true => "Top",
@@ -40,12 +44,19 @@ impl Game {
         println!("====================");
     }
 
+    fn print_mid_inning(&self) {
+        println!("\n");
+        print_bases(self.base_runners);
+        println!("{} outs", self.outs);
+        println!("==========");
+    }
+
     fn do_half_inning(&mut self) {
         self.outs = 0;
         self.base_runners = BaseRunners::Empty;
-        self.print_status();
+        self.print_inning_start();
         while self.outs < 3 {
-            dbg!(self.base_runners);
+            self.print_mid_inning();
             self.do_at_bat();
         }
     }
@@ -62,6 +73,7 @@ impl Game {
     }
 
     fn score(&mut self, runs: i32) {
+        println!("{} Runs score!", runs);
 
         if self.top {
             self.away_team.runs += runs;
@@ -73,11 +85,14 @@ impl Game {
 
     fn do_at_bat(&mut self) {
         // get an at bat result
-        let mut result:AtBat = rand::random();
-        result = dbg!(result);
+        let result:AtBat = rand::random();
         match result { 
-            AtBat::Strikeout => self.outs += 1,
+            AtBat::Strikeout => {
+                println!("Strikeout!");
+                self.outs += 1;
+            },
             AtBat::Walk => {
+                println!("Walk!");
                 self.base_runners = match self.base_runners {
                     BaseRunners::Empty => BaseRunners::First,
                     BaseRunners::First => BaseRunners::FirstSecond,
@@ -94,8 +109,8 @@ impl Game {
             },
             AtBat::Contact => {
                 // if contact, decide kind of contact
-                let mut contact_result: ContactType = rand::random();
-                contact_result = dbg!(contact_result);
+                let contact_result: ContactType = rand::random();
+                println!("{}", contact_result);
                 self.do_contact(contact_result);
             }
         } 
@@ -178,24 +193,24 @@ impl Game {
                 }
             },
             ContactType::Triple => {
-                self.base_runners = BaseRunners::Third;
                 self.score(match self.base_runners {
                     BaseRunners::Empty => 0,
                     BaseRunners::First | BaseRunners::Second | BaseRunners::Third => 1,
                     BaseRunners::FirstSecond | BaseRunners::SecondThird | BaseRunners::FirstThird => 2,
                     BaseRunners::Loaded => 3,
                 }
-                )
+                );
+                self.base_runners = BaseRunners::Third;
             },
             ContactType::Homerun => {
-                self.base_runners = BaseRunners::Empty;
                 self.score(match self.base_runners {
                     BaseRunners::Empty => 1,
                     BaseRunners::First | BaseRunners::Second | BaseRunners::Third => 2,
                     BaseRunners::FirstSecond | BaseRunners::SecondThird | BaseRunners::FirstThird => 3,
                     BaseRunners::Loaded => 4,
                 }
-                )
+                );
+                self.base_runners = BaseRunners::Empty;
             },
         }
     }
@@ -219,6 +234,7 @@ enum AtBat {
     Contact
 }
 
+// generate an AtBat randomly
 impl Distribution<AtBat> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AtBat {
         match rng.gen_range(0..=2) {
@@ -230,6 +246,7 @@ impl Distribution<AtBat> for Standard {
 }
 
 #[derive(Debug)]
+#[derive(strum_macros::Display)]
 enum ContactType {
     GroundOut,
     InfieldFly,
@@ -240,6 +257,7 @@ enum ContactType {
     Homerun,
 }
 
+// generate an ContactType randomly
 impl Distribution<ContactType> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ContactType {
         match rng.gen_range(0..=6) {
@@ -268,6 +286,20 @@ enum BaseRunners {
     Loaded
 }
 
+fn print_bases(state: BaseRunners) {
+    let art = match state {
+        BaseRunners::Empty => " ◇ \n◇ ◇",
+        BaseRunners::First => " ◇ \n◇ ◆",
+        BaseRunners::Second => " ◆ \n◇ ◇",
+        BaseRunners::Third => " ◇ \n◆ ◇",
+        BaseRunners::FirstSecond => " ◆ \n◇ ◆",
+        BaseRunners::SecondThird => " ◆ \n◆ ◇",
+        BaseRunners::FirstThird => " ◇ \n◆ ◆",
+        BaseRunners::Loaded => " ◆ \n◆ ◆",
+    };
+    println!("{}", art);
+}
+
 fn main() {
 
     let mut game = Game::new("Red Sox", "Brewers");
@@ -277,5 +309,5 @@ fn main() {
     }
 
     println!("GAME OVER");
-    game.print_status();
+    game.print_score();
 }
